@@ -1,0 +1,460 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corda Approval Workflow</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+
+        header {
+            background: #14213d;
+            color: white;
+            padding: 25px 7%;
+        }
+
+        header h1 { margin: 0 0 8px; }
+        header p { color: #cbd5e1; margin: 0; }
+
+        main {
+            max-width: 1150px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+
+        .card, .panel {
+            background: white;
+            padding: 22px;
+            border-radius: 12px;
+            box-shadow: 0 3px 12px #0f172a0b;
+        }
+
+        .card span { color: #64748b; }
+        .card h2 { font-size: 30px; margin-bottom: 0; }
+
+        .panel { margin-bottom: 22px; }
+        .panel h2 { margin-top: 0; }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(220px,1fr));
+            gap: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 14px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 11px;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            font: inherit;
+        }
+
+        select[multiple] { min-height: 110px; }
+
+        button {
+            border: 0;
+            padding: 9px 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: white;
+            background: #2563eb;
+            margin: 4px;
+        }
+
+        button:hover { opacity: .88; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+
+        .approve { background: #0d9488; }
+        .finalize { background: #15803d; }
+        .refresh { background: #475569; }
+
+        .table-wrap { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 750px;
+        }
+
+        th, td {
+            padding: 13px 10px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 13px;
+        }
+
+        th { color: #64748b; }
+
+        .status {
+            display: inline-block;
+            padding: 5px 9px;
+            border-radius: 20px;
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .message {
+    position: fixed;
+    top: 15px;
+    right: 20px;
+    z-index: 9999;
+    max-width: 500px;
+    margin: 0;
+    padding: 12px;
+    border-radius: 7px;
+    display: none;
+    white-space: pre-wrap;
+    box-shadow: 0 4px 15px #0002;
+}
+
+        .ok { background: #dcfce7; color: #166534; }
+        .error { background: #fee2e2; color: #991b1b; }
+
+        .note { color: #64748b; font-size: 13px; }
+
+        footer {
+            text-align: center;
+            padding: 25px;
+            color: #64748b;
+        }
+
+        @media(max-width:600px) {
+            header { padding: 20px; }
+            main { padding: 0 12px; }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>Corda Approval Workflow</h1>
+    <p>Decentralized request management and multi-party approvals</p>
+</header>
+
+<main>
+
+    <div id="message" class="message"></div>
+
+    <section class="summary">
+        <div class="card">
+            <span>Total Requests</span>
+            <h2 id="total">0</h2>
+        </div>
+        <div class="card">
+            <span>Pending Requests</span>
+            <h2 id="pending">0</h2>
+        </div>
+        <div class="card">
+            <span>Finalized Requests</span>
+            <h2 id="finalized">0</h2>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Create Approval Request</h2>
+
+        <form id="requestForm">
+            <div class="form-grid">
+                <div>
+                    <label>Request ID</label>
+                    <input id="requestId" placeholder="REQ101" required>
+                </div>
+
+                <div>
+                    <label>Description</label>
+                    <input id="description"
+                           placeholder="Enter description" required>
+                </div>
+
+                <div>
+                    <label>Approvers (Select multiple)</label>
+                    <select id="approvers" multiple required>
+                        <option value="PartyB">PartyB - New York</option>
+                        <option value="PartyC">PartyC - Singapore</option>
+                        <option value="PartyD">PartyD - Paris</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" id="createButton">
+                Create Request on Corda
+            </button>
+        </form>
+
+        <p class="note">
+            Requests are submitted to the live Corda network through the API.
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>Approval Requests</h2>
+        <button class="refresh" onclick="loadRequests()">Refresh Requests</button>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>Request ID</th>
+                    <th>Description</th>
+                    <th>Approvers</th>
+                    <th>Approval Progress</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody id="requestTable">
+                <tr><td colspan="6">Loading requests...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+
+<footer>Corda Community 4.12 · Approval Workflow Project</footer>
+
+<script>
+    const API = "http://localhost:10050/api";
+
+    let requests = [];
+
+    function showMessage(message, type = "ok") {
+        const box = document.getElementById("message");
+        box.textContent = message;
+        box.className = "message " + type;
+        box.style.display = "block";
+    }
+
+    async function apiCall(url, options = {}) {
+        const response = await fetch(API + url, {
+            ...options,
+            headers: {
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            }
+        });
+
+        const text = await response.text();
+
+        if (!response.ok) {
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+
+        return text ? JSON.parse(text) : null;
+    }
+
+    function partyName(name) {
+        return name.includes("PartyB") ? "PartyB" :
+            name.includes("PartyC") ? "PartyC" :
+                name.includes("PartyD") ? "PartyD" : name;
+    }
+
+    async function loadRequests() {
+        try {
+            requests = await apiCall("/requests");
+            renderRequests();
+        } catch (error) {
+            showMessage("Could not load requests: " + error.message, "error");
+        }
+    }
+
+    document.getElementById("requestForm")
+        .addEventListener("submit", async function(event) {
+            event.preventDefault();
+
+            const button = document.getElementById("createButton");
+            const requestId = document.getElementById("requestId").value.trim();
+            const description = document.getElementById("description").value.trim();
+
+            const approvers = Array.from(
+                document.getElementById("approvers").selectedOptions
+            ).map(option => option.value);
+
+            if (!approvers.length) {
+                showMessage("Select at least one approver.", "error");
+                return;
+            }
+
+            button.disabled = true;
+
+            try {
+                const result = await apiCall("/requests", {
+                    method: "POST",
+                    body: JSON.stringify({ requestId, description, approvers })
+                });
+
+                showMessage(result.message + ": " + result.requestId);
+                this.reset();
+                await loadRequests();
+                window.scrollTo({
+    top: document.querySelector(".panel:last-of-type").offsetTop - 20,
+    behavior: "instant"
+});
+
+            } catch (error) {
+                showMessage("Creation failed: " + error.message, "error");
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+    async function approveRequest(id, approver) {
+        if (!confirm("Approve " + id + " as " + approver + "?")) return;
+
+        try {
+            const result = await apiCall(
+                "/requests/" + encodeURIComponent(id) + "/approve",
+                {
+                    method: "POST",
+                    body: JSON.stringify({ approver })
+                }
+            );
+
+            showMessage(result.message + " by " + approver);
+            await loadRequests();
+
+        } catch (error) {
+            showMessage("Approval failed: " + error.message, "error");
+        }
+    }
+
+    async function finalizeRequest(id) {
+        if (!confirm("Finalize request " + id + "?")) return;
+
+        try {
+            const result = await apiCall(
+                "/requests/" + encodeURIComponent(id) + "/finalize",
+                { method: "POST" }
+            );
+
+            showMessage(result.message);
+            await loadRequests();
+
+        } catch (error) {
+            showMessage("Finalization failed: " + error.message, "error");
+        }
+    }
+
+    function renderRequests() {
+        const table = document.getElementById("requestTable");
+        table.innerHTML = "";
+
+        let pending = 0;
+        let finalized = 0;
+
+        if (!requests.length) {
+            table.innerHTML =
+                '<tr><td colspan="6">No requests found.</td></tr>';
+        }
+
+        requests.forEach(request => {
+            const approvers = request.approvers || [];
+            const approved = request.approvedBy || [];
+
+            const approvedNames = approved.map(partyName);
+            const requiredNames = approvers.map(partyName);
+
+            const allApproved = requiredNames.length > 0 &&
+                requiredNames.every(name => approvedNames.includes(name));
+
+            const isFinalized = request.finalized;
+
+            if (isFinalized) finalized++;
+            else pending++;
+
+            const row = document.createElement("tr");
+
+            const values = [
+                request.requestId,
+                request.description,
+                requiredNames.join(", "),
+                approvedNames.length + " / " + requiredNames.length,
+                isFinalized ? "Finalized" :
+                    allApproved ? "Ready to finalize" : "Pending"
+            ];
+
+            values.forEach((value, index) => {
+                const cell = document.createElement("td");
+                cell.textContent = value;
+
+                if (index === 4) {
+                    const badge = document.createElement("span");
+                    badge.className = "status" +
+                        (isFinalized ? " success" : "");
+                    badge.textContent = value;
+                    cell.textContent = "";
+                    cell.appendChild(badge);
+                }
+
+                row.appendChild(cell);
+            });
+
+            const actions = document.createElement("td");
+
+            if (!isFinalized) {
+                approvers.forEach(approver => {
+                    const name = partyName(approver);
+
+                    if (!approvedNames.includes(name)) {
+                        const button = document.createElement("button");
+                        button.className = "approve";
+                        button.textContent = "Approve " + name;
+                        button.onclick = () =>
+                            approveRequest(request.requestId, name);
+                        actions.appendChild(button);
+                    }
+                });
+
+                if (allApproved) {
+                    const button = document.createElement("button");
+                    button.className = "finalize";
+                    button.textContent = "Finalize";
+                    button.onclick = () => finalizeRequest(request.requestId);
+                    actions.appendChild(button);
+                }
+            } else {
+                actions.textContent = "Completed";
+            }
+
+            row.appendChild(actions);
+            table.appendChild(row);
+        });
+
+        document.getElementById("total").textContent = requests.length;
+        document.getElementById("pending").textContent = pending;
+        document.getElementById("finalized").textContent = finalized;
+    }
+
+    loadRequests();
+</script>
+
+</body>
+</html>
