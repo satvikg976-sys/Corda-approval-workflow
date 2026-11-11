@@ -1,0 +1,37 @@
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# IntelliJ / IDE
+.idea/
+*.iml
+.settings/
+
+# Corda node data and deployment
+**/logs/
+**/certificates/
+**/additional-node-infos/
+**/network-parameters
+**/node.conf
+**/corda.jar
+**/persistence/
+**/artemis/
+
+# Secrets and credentials
+*.jks
+*.keystore
+*.key
+*.pem
+.env
+.env.*
+!*.env.example
+
+# Backups
+backups/
+*.backup
+
+# OS files
+.DS_Store
+Thumbs.db
